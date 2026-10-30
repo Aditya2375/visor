@@ -13,8 +13,13 @@ static int console_putc(uint8_t c) {
 
 int handle_io(struct vm *vm, struct kvm_run *run) {
     (void)vm;
-    if (run->io.direction != KVM_EXIT_IO_OUT)
-        return 0;                   /* reads return garbage-free zeroes */
+    if (run->io.direction == KVM_EXIT_IO_IN) {
+        /* No input devices: fill the data buffer or the guest would read
+         * whatever stale bytes happen to be in the shared page. */
+        memset((uint8_t *)run + run->io.data_offset, 0,
+               (size_t)run->io.size * run->io.count);
+        return 0;
+    }
 
     const uint8_t *data = (const uint8_t *)run + run->io.data_offset;
     for (uint32_t i = 0; i < run->io.count; i++) {
