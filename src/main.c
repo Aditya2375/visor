@@ -7,6 +7,8 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "util.h"
+
 #define DEFAULT_MEM_MIB 16
 #define MAX_MEM_MIB     1024
 #define GUEST_LOAD_ADDR 0x1000
@@ -26,37 +28,6 @@ static void usage(const char *argv0) {
     fprintf(stderr, "  hlt            clean stop (exit status 0)\n");
 }
 
-static void *read_file(const char *path, size_t *len) {
-    FILE *f = fopen(path, "rb");
-    if (!f)
-        return NULL;
-    fseek(f, 0, SEEK_END);
-    long size = ftell(f);
-    fseek(f, 0, SEEK_SET);
-    if (size <= 0) {
-        fclose(f);
-        return NULL;
-    }
-    void *buf = malloc((size_t)size);
-    if (!buf || fread(buf, 1, (size_t)size, f) != (size_t)size) {
-        free(buf);
-        fclose(f);
-        return NULL;
-    }
-    fclose(f);
-    *len = (size_t)size;
-    return buf;
-}
-
-static int parse_mem_mib(const char *arg, long *out) {
-    char *end = NULL;
-    long v = strtol(arg, &end, 10);
-    if (!end || *end || v < 1 || v > MAX_MEM_MIB)
-        return -1;
-    *out = v;
-    return 0;
-}
-
 int main(int argc, char **argv) {
     if (argc < 3 || strcmp(argv[1], "run") != 0) {
         usage(argv[0]);
@@ -65,7 +36,7 @@ int main(int argc, char **argv) {
     const char *image_path = argv[2];
     long mem_mib = DEFAULT_MEM_MIB;
     if (argc == 5 && strcmp(argv[3], "-m") == 0) {
-        if (parse_mem_mib(argv[4], &mem_mib) != 0) {
+        if (parse_mem_mib(argv[4], &mem_mib, MAX_MEM_MIB) != 0) {
             fprintf(stderr, "visor: -m expects 1-%d (MiB), got '%s'\n",
                     MAX_MEM_MIB, argv[4]);
             return 2;
@@ -83,16 +54,24 @@ int main(int argc, char **argv) {
     }
 
     struct vm vm;
-    if (vm_create(&vm, (size_t)mem_mib * 1024 * 1024) != 0)
+    if (vm_create(&vm, (size_t)mem_mib * 1024 * 1024) != 0) {
+        free(image);
         return 1;
-    if (vm_load(&vm, GUEST_LOAD_ADDR, image, len) != 0)
+    }
+    int rc = vm_load(&vm, GUEST_LOAD_ADDR, image, len);
+    free(image);                /* the guest owns a copy now */
+    if (rc != 0) {
+        vm_destroy(&vm);
         return 1;
-    if (vm_init_real_mode(&vm, GUEST_LOAD_ADDR) != 0)
+    }
+    if (vm_init_real_mode(&vm, GUEST_LOAD_ADDR) != 0) {
+        vm_destroy(&vm);
         return 1;
+    }
 
     signal(SIGALRM, on_alarm);
     alarm(WATCHDOG_SECS);
-    int rc = vm_run(&vm);
+    rc = vm_run(&vm);
     alarm(0);
     fflush(stdout);
     if (rc >= 0)
