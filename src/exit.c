@@ -14,9 +14,9 @@ static int console_putc(uint8_t c) {
 int handle_io(struct vm *vm, struct kvm_run *run) {
     (void)vm;
     if (run->io.direction == KVM_EXIT_IO_IN) {
-        /* No input devices: fill the data buffer or the guest would read
-         * whatever stale bytes happen to be in the shared page. */
-        memset((uint8_t *)run + run->io.data_offset, 0,
+        /* No input devices: an unassigned port floats high, like a real
+         * bus. Never leave stale shared-page bytes for the guest. */
+        memset((uint8_t *)run + run->io.data_offset, 0xFF,
                (size_t)run->io.size * run->io.count);
         return 0;
     }
@@ -48,7 +48,9 @@ int handle_io(struct vm *vm, struct kvm_run *run) {
 int handle_mmio(struct vm *vm, struct kvm_run *run) {
     (void)vm;
     /* No MMIO devices yet; complete the access harmlessly instead of
-     * killing the guest for touching an unassigned address. */
+     * killing the guest for touching an unassigned address. Reads return
+     * zeroes: the shared page holds hypervisor state, so leaving it
+     * alone would leak host bytes into the guest. */
     if (!run->mmio.is_write)
         memset(run->mmio.data, 0, 8);
     return 0;

@@ -42,9 +42,10 @@ the host must service:
   with status). Any other port write is ignored; port reads return 0xFF,
   the value a floating bus reports on real hardware.
 - **KVM_EXIT_MMIO** - an access to unmapped guest physical memory. Completed
-  as a no-op: reads leave the instruction's target register alone, writes
-  are dropped. This mirrors how reads of absent RAM behave and keeps
-  accidental near-miss accesses diagnosable instead of fatal.
+  as a no-op: reads return zero, writes are dropped. Zero (not "leave the
+  buffer alone") is deliberate: the shared run page holds hypervisor
+  state, and handing stale bytes to the guest would leak host memory.
+  This keeps accidental near-miss accesses diagnosable instead of fatal.
 - **KVM_EXIT_HLT** - the guest executed `hlt`. visor treats this as a
   graceful stop and exits with status 0.
 - **KVM_EXIT_SHUTDOWN** - a triple fault or equivalent. visor dumps the
