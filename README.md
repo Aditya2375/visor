@@ -78,3 +78,15 @@ guests/    example guest images (NASM, built to flat binaries)
 tests/     host unit tests and the KVM integration test
 docs/      architecture notes
 ```
+
+## Status: guest execution pending CI
+
+The host unit tests (guest-image loading bounds) pass locally. The guest
+integration test - running hello.img and pmode.img on the actual hypervisor
+- requires /dev/kvm, which this development environment does not have, so
+it has not been watched yet. It runs on every push in GitHub Actions, where
+KVM is available; until that first green CI run, guest execution is
+unverified.
+
+Not tested: SMP guests, memory sizes near the 1 GiB flag limit, long-running
+guests, and any device model beyond the console/exit ports.
