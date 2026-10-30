@@ -1,7 +1,8 @@
 #!/bin/sh
 # Integration test: run every guest image under visor and compare its
-# console output and exit status with the expected file beside it.
-# Requires /dev/kvm; skips cleanly where hardware virtualization is absent.
+# console output, exit status, and the host-side exit report against the
+# expected file beside it. Requires /dev/kvm; skips cleanly where hardware
+# virtualization is absent.
 set -e
 cd "$(dirname "$0")/.."
 VISOR=${VISOR:-build/visor}
@@ -12,15 +13,25 @@ if [ ! -e /dev/kvm ]; then
 fi
 
 fail=0
+err=$(mktemp)
+trap 'rm -f "$err"' EXIT
 for img in build/guests/*.img; do
     name=$(basename "$img" .img)
     want="guests/$name.expected"
     [ -f "$want" ] || continue
-    got=$("$VISOR" run "$img" | tr -d '\r')
+    out=$("$VISOR" run "$img" 2>"$err")
+    rc=$?
+    got=$(printf '%s' "$out" | tr -d '\r')
     if [ "$got" != "$(cat "$want")" ]; then
-        echo "FAIL $name:" >&2
+        echo "FAIL $name output:" >&2
         echo "  want: $(cat "$want")" >&2
         echo "  got:  $got" >&2
+        fail=1
+    elif [ "$rc" -ne 0 ]; then
+        echo "FAIL $name: exit status $rc" >&2
+        fail=1
+    elif ! grep -q "guest exit: 0" "$err"; then
+        echo "FAIL $name: missing host-side 'guest exit: 0' report" >&2
         fail=1
     else
         echo "PASS $name"
