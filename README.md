@@ -32,10 +32,11 @@ visor run <guest.img> [-m MiB]
     -m MiB      guest RAM size, 1-1024 MiB (default 16)
 ```
 
-The guest starts in real mode at `cs:ip = 0x0100:0000`, which places its
-first instruction at the top of the loaded image. Guests signal exit by
-writing a status byte to port `0xF4`; visor prints `guest exit: <code>` and
-exits with the same code.
+The guest starts in real mode at `cs:ip = 0x0100:0000`, executing the
+image's first byte. Guests signal exit by writing a status byte to port
+`0xF4`; visor prints `guest exit: <code>` on stderr (keeping stdout pure
+guest output) and exits with the same code. A guest that never stops is
+killed after 10 seconds by a watchdog, with a register dump on stderr.
 
 ## Guest ABI
 
@@ -43,6 +44,7 @@ exits with the same code.
 |---------------------|--------------------------------------------------|
 | RAM                 | guest physical 0 - size (default 16 MiB)         |
 | Entry point         | physical `0x1000`, real mode, `cs=0x100 ip=0`    |
+| Stack               | real-mode `sp=0x0FF0`, below the load address    |
 | Console out         | `out 0xE9, al` writes one byte to the host stdout |
 | Exit                | `out 0xF4, al` exits with status `al`            |
 | MMIO                | unmapped accesses complete as no-ops             |
@@ -53,6 +55,11 @@ Example guests in `guests/`:
 - **pmode.asm** - sets up a GDT, enables protected mode, far-jumps into
   32-bit code, prints, exits. Demonstrates that guests get real ring-0
   hardware semantics including segmentation and protected mode.
+- **ints.asm** - installs an int3 handler in the IVT, triggers it, and
+  checks that `iret` resumes the interrupted instruction.
+- **mmio.asm** - reads and writes a guest physical address outside the
+  assigned region, proving MMIO reads come back zeroed, writes are
+  dropped, and the guest keeps running.
 
 ## Architecture
 
@@ -79,14 +86,14 @@ tests/     host unit tests and the KVM integration test
 docs/      architecture notes
 ```
 
-## Status: guest execution pending CI
+## Verification
 
-The host unit tests (guest-image loading bounds) pass locally. The guest
-integration test - running hello.img and pmode.img on the actual hypervisor
-- requires /dev/kvm, which this development environment does not have, so
-it has not been watched yet. It runs on every push in GitHub Actions, where
-KVM is available; until that first green CI run, guest execution is
-unverified.
+The host unit tests (guest-image loading bounds) and the guest integration
+test - all four guests running on the actual hypervisor, compared against
+expected console output, exit status, and the host-side exit report - run
+in GitHub Actions on every push, where /dev/kvm is available, and are
+green. `tests/run-guest-tests.sh` skips cleanly on hosts without KVM.
 
-Not tested: SMP guests, memory sizes near the 1 GiB flag limit, long-running
-guests, and any device model beyond the console/exit ports.
+Not tested: SMP guests, memory sizes near the 1 GiB flag limit, guests
+long-running enough to hit the 10 s watchdog, and any device model beyond
+the console/exit ports.
