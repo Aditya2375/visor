@@ -17,6 +17,18 @@ err=$(mktemp)
 trap 'rm -f "$err"' EXIT
 for img in build/guests/*.img; do
     name=$(basename "$img" .img)
+    if [ "$name" = spin ]; then
+        # watchdog guest: must be killed by the timer, with the diagnostic
+        s_rc=0
+        "$VISOR" run "$img" >/dev/null 2>"$err" || s_rc=$?
+        if [ "$s_rc" -eq 0 ] || ! grep -q "watchdog expired" "$err"; then
+            echo "FAIL spin: watchdog did not stop the guest (rc=$s_rc)" >&2
+            fail=1
+        else
+            echo "PASS spin (watchdog)"
+        fi
+        continue
+    fi
     want="guests/$name.expected"
     [ -f "$want" ] || continue
     rc=0
