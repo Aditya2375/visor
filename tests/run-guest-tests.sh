@@ -19,8 +19,8 @@ for img in build/guests/*.img; do
     name=$(basename "$img" .img)
     want="guests/$name.expected"
     [ -f "$want" ] || continue
-    out=$("$VISOR" run "$img" 2>"$err")
-    rc=$?
+    rc=0
+    out=$("$VISOR" run "$img" 2>"$err") || rc=$?
     got=$(printf '%s' "$out" | tr -d '\r')
     if [ "$got" != "$(cat "$want")" ]; then
         echo "FAIL $name output:" >&2
