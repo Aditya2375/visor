@@ -6,6 +6,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: ./tests/unit/run_tests.sh
+      - run: ./tests/check-docs.sh
   guests:
     runs-on: ubuntu-latest
     steps:
