@@ -8,7 +8,7 @@ start:
     cli
     xor ax, ax
     mov ds, ax                  ; IVT lives at physical 0
-    mov word [3*4], handler     ; vector 3: offset
+    mov word [3*4], handler - 0x1000  ; vector 3: offset within cs=0x100
     mov word [3*4+2], 0x100     ; vector 3: segment (we are loaded at 0x1000)
     sti
 
@@ -28,7 +28,7 @@ start:
     out 0xF4, al
 
 handler:
-    mov byte [cs:hit], 1        ; data segment is 0 here, so address via cs
+    mov byte [cs:hit - 0x1000], 1   ; cs-relative: label minus ORG base
     iret
 
 print:
