@@ -1,6 +1,7 @@
 #include "vm.h"
 #include "exit.h"
 
+#include <errno.h>
 #include <fcntl.h>
 #include <linux/kvm.h>
 #include <stdio.h>
@@ -10,6 +11,8 @@
 #include <unistd.h>
 
 #define PAGE_SIZE 4096
+
+volatile sig_atomic_t visor_watchdog_fired = 0;
 
 static size_t align_up(size_t n, size_t a) { return (n + a - 1) / a * a; }
 
@@ -110,7 +113,11 @@ int vm_init_real_mode(struct vm *vm, uint32_t entry) {
     memset(&regs, 0, sizeof(regs));
     regs.rip = entry & 0xF;
     regs.rflags = 0x2;      /* reserved bit, interrupts off */
-    regs.rsp = 0x8000;      /* small stack well below the load address */
+    /* Stack just below the load address: 3.5 KiB of room above the IVT and
+     * BIOS data area, and never in the way of the image, which grows up
+     * from 0x1000. (Real-mode stack offsets are 16-bit, so the stack must
+     * live in the low 64 KiB.) */
+    regs.rsp = 0x0FF0;
     if (ioctl(vm->vcpu_fd, KVM_SET_REGS, &regs) < 0) {
         perror("KVM_SET_REGS");
         return -1;
@@ -122,6 +129,14 @@ int vm_run(struct vm *vm) {
     struct kvm_run *run = vm->run;
     for (;;) {
         int rc = ioctl(vm->vcpu_fd, KVM_RUN, 0);
+        if (rc < 0 && errno == EINTR) {
+            if (visor_watchdog_fired) {
+                fprintf(stderr, "visor: watchdog expired - guest did not stop on its own\n");
+                dump_guest_state(vm, "watchdog timeout");
+                return -1;
+            }
+            continue;   /* unrelated signal: re-enter the guest */
+        }
         if (rc < 0) {
             perror("KVM_RUN");
             return -1;

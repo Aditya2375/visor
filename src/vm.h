@@ -3,6 +3,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <signal.h>
 
 /* One virtual machine: KVM fd pair, guest physical memory, one vCPU. */
 struct vm {
@@ -16,6 +17,9 @@ struct vm {
     int     stop;           /* set by an exit handler to end vm_run */
     int     status;         /* guest-provided exit status */
 };
+
+/* Set by the SIGALRM handler when the watchdog expires; vm_run checks it. */
+extern volatile sig_atomic_t visor_watchdog_fired;
 
 int  vm_create(struct vm *vm, size_t mem_size);
 int  vm_load(struct vm *vm, uint32_t guest_addr, const void *data, size_t len);
