@@ -11,6 +11,8 @@ $ visor run build/guests/hello.img
 hello from the guest
 ```
 
+**[Live demo](https://aditya2375.github.io/visor/)** - the CI-verified guest transcripts, replayed in the browser (a browser has no KVM to run a hypervisor on).
+
 ## Quick start
 
 Requires Linux with KVM support (`/dev/kvm`) - any machine with Intel VT-x

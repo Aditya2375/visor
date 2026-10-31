@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>visor — live demo</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #0d0f14; color: #cfd6e4;
+         font: 16px/1.6 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 48px 20px 80px; }
+  h1 { font-size: 2rem; margin: 0 0 4px; color: #7ecbff; letter-spacing: -0.02em; }
+  .tag { color: #8b93a7; margin: 0 0 28px; }
+  h2 { font-size: 1.1rem; color: #9fb6e0; margin: 36px 0 8px; }
+  code { background: #171b26; padding: 2px 6px; border-radius: 4px; font-size: 0.9em; }
+  a { color: #7ecbff; }
+  #term { background: #05070b; border: 1px solid #232838; border-radius: 10px;
+          padding: 18px 20px; margin: 24px 0; min-height: 320px;
+          font: 14px/1.7 "SF Mono", Menlo, Consolas, monospace; white-space: pre-wrap; }
+  .p { color: #5b6478; }   /* prompt */
+  .c { color: #cfd6e4; }   /* command */
+  .o { color: #8b93a7; }   /* guest output */
+  .ok { color: #6fe3a1; }  /* pass */
+  button { background: #171b26; color: #cfd6e4; border: 1px solid #2c3347;
+           border-radius: 6px; padding: 8px 16px; font-size: 14px; cursor: pointer; }
+  button:hover { border-color: #7ecbff; }
+</style>
+</head>
+<body>
+<main>
+  <h1>visor</h1>
+  <p class="tag">A type-2 hypervisor for Linux on the KVM kernel API, in C. Every line of guest output below is real.</p>
+
+  <div id="term"></div>
+  <button id="replay">Replay</button>
+
+  <h2>Why a replay instead of an in-browser run?</h2>
+  <p>visor runs guest code on the CPU itself through <code>/dev/kvm</code> - hardware
+     virtualization. A browser tab has no KVM (and WebAssembly cannot provide one), so there is
+     nothing to run it on here. What this page replays instead is the exact console transcript
+     the CI guest suite verified byte-for-byte against real KVM runs: each
+     <code>visor run build/guests/&lt;name&gt;.img</code> below prints the output recorded in
+     <code>guests/&lt;name&gt;.expected</code>, which the harness compares live against the guest's
+     actual output on every push, plus the host-side <code>guest exit: 0</code> report. The five
+     guests pass on real hardware in CI -
+     <a href="https://github.com/Aditya2375/visor/actions/runs/41079369739">see the run</a>.</p>
+
+  <h2>The five guests</h2>
+  <p><code>hello</code> writes to a virtual serial port;
+     <code>ints</code> triggers <code>int3</code>, runs its handler and returns with
+     <code>iret</code>; <code>mmio</code> probes an unmapped device region; <code>pmode</code>
+     enters 32-bit protected mode inside the guest; <code>spin</code> loops forever until the
+     watchdog timer tears the VM down. Sources are in <code>guests/</code> next to each expected
+     transcript.</p>
+
+  <h2>Run it yourself</h2>
+  <p>On any Linux host with KVM: <code>make</code>, then
+     <code>./build/visor run build/guests/hello.img</code>. The full suite is
+     <code>./tests/run-guest-tests.sh</code> (it skips cleanly where <code>/dev/kvm</code> is
+     absent).</p>
+</main>
+<script>
+const LINES = [
+  ["p", "$ "], ["c", "visor run build/guests/hello.img\n"],
+  ["o", "hello from the guest\n"], ["o", "guest exit: 0\n"], ["ok", "PASS hello\n\n"],
+  ["p", "$ "], ["c", "visor run build/guests/ints.img\n"],
+  ["o", "int3 delivered, handler ran, iret returned\n"], ["o", "guest exit: 0\n"], ["ok", "PASS ints\n\n"],
+  ["p", "$ "], ["c", "visor run build/guests/mmio.img\n"],
+  ["o", "mmio reads zeroed, writes dropped, guest alive\n"], ["o", "guest exit: 0\n"], ["ok", "PASS mmio\n\n"],
+  ["p", "$ "], ["c", "visor run build/guests/pmode.img\n"],
+  ["o", "protected mode reached inside the guest\n"], ["o", "guest exit: 0\n"], ["ok", "PASS pmode\n\n"],
+  ["p", "$ "], ["c", "visor run build/guests/spin.img\n"],
+  ["o", "visor: watchdog expired - guest did not stop on its own\n"], ["ok", "PASS spin (watchdog)\n\n"],
+  ["ok", "GUEST TESTS PASSED\n"],
+];
+const term = document.getElementById("term");
+let li = 0, ci = 0, span = null, timer = null;
+function step() {
+  if (li >= LINES.length) return;
+  const [cls, text] = LINES[li];
+  if (!span) { span = document.createElement("span"); span.className = cls; term.appendChild(span); }
+  const delay = cls === "c" ? 45 : 14;
+  span.textContent += text[ci++];
+  if (ci >= text.length) { li++; ci = 0; span = null; timer = setTimeout(step, cls === "c" ? 260 : 200); }
+  else timer = setTimeout(step, delay);
+}
+function start() { clearTimeout(timer); term.textContent = ""; li = 0; ci = 0; span = null; step(); }
+document.getElementById("replay").addEventListener("click", start);
+start();
+</script>
+</body>
+</html>
